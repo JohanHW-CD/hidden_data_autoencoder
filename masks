@@ -1,0 +1,101 @@
+def generate_random_mask(real_data: torch.Tensor, flip_prob: float = 0.2) -> torch.Tensor:
+    """
+    Generate a binary mask by randomly flipping values in real_data.        
+    """
+    mask = torch.rand_like(real_data, dtype=torch.float) < flip_prob
+    random_mask = real_data.clone()
+    random_mask[mask] = 1 - random_mask[mask]
+    return random_mask
+
+
+def generate_clustered_mask(real_data: torch.Tensor, num_clusters: int = 4, cluster_size: int = 4) -> torch.Tensor:
+    """
+    Generate a binary mask by flipping values in clustered regions of real_data.
+    The mask modifies small square/rectangular clusters instead of only one row.
+    
+    Parameters:
+        real_data (torch.Tensor): The input data to modify.
+        num_clusters (int): Number of clusters to modify.
+        cluster_size (int): Approximate size of each cluster in both rows and columns.
+        
+    Returns:
+        torch.Tensor: A masked version of the input data.
+    """
+    random_mask = real_data.clone()
+    num_rows, num_cols = real_data.shape
+    
+    for _ in range(num_clusters):
+        start_row = random.randint(0, max(0, num_rows - cluster_size))
+        start_col = random.randint(0, max(0, num_cols - cluster_size))
+        end_row = min(start_row + cluster_size, num_rows)
+        end_col = min(start_col + cluster_size, num_cols)
+        
+        # Flip values in a clustered block instead of just a row
+        random_mask[start_row:end_row, start_col:end_col] = 1 - random_mask[start_row:end_row, start_col:end_col]
+    
+    return random_mask
+
+
+
+def generate_density_based_mask(real_data: torch.Tensor, window_size: int = 7, threshold: float = 0.02, flip_prob: float = 0.5) -> torch.Tensor:
+    """
+    Generate a binary mask by flipping values in areas with high density of ones, with some probability.
+
+    Args:
+        real_data (torch.Tensor): Input tensor.
+        window_size (int): Size of the sliding window for density computation.
+        threshold (float): Fraction of ones required to trigger flipping.
+        flip_prob (float): Probability of flipping a value in high-density regions.
+
+    Returns:
+        torch.Tensor: Masked tensor.
+    """
+    
+    num_rows, num_cols = real_data.shape
+    random_mask = real_data.clone()
+    
+    # Convert tensor to numpy array for processing
+    real_data_np = real_data.numpy()
+    
+    # Compute local sum of ones using a moving window
+    ones_count = scipy.ndimage.uniform_filter(real_data_np, size=(window_size, window_size), mode='constant')
+
+    # Normalize by the max possible ones in the window to get density
+    max_possible_ones = window_size * window_size
+    ones_density = ones_count / max_possible_ones
+    
+    # Identify regions where density exceeds the threshold
+    high_density_mask = torch.from_numpy(ones_density >= threshold).bool()
+
+    # Create a probabilistic mask where values are flipped with probability flip_prob
+    prob_mask = torch.rand_like(real_data, dtype=torch.float) < flip_prob  # Generates True with probability flip_prob
+
+    # Combine masks: Flip only where density is high AND random probability check passes
+    flip_mask = high_density_mask & prob_mask
+    random_mask[flip_mask] = 1 - random_mask[flip_mask]
+    
+    return random_mask
+
+def visualize_matrix(matrix: torch.Tensor, rows: int = None, cols: int = None):
+    """
+    Visualizes a matrix using a heatmap.
+    """
+    if rows is not None and cols is not None:
+        matrix = matrix[:rows, :cols]
+    
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(matrix.numpy(), cmap='gray', cbar=False, linewidths=0.1, linecolor='black')
+    plt.title("Matrix Visualization")
+    plt.show()
+
+
+
+# Testing
+random_mask3 = generate_density_based_mask(real_data, window_size=5, threshold=0.5)
+random_mask2 = generate_clustered_mask(real_data)
+random_mask1 = generate_random_mask(real_data)
+
+visualize_matrix(real_data)
+visualize_matrix(random_mask1)
+visualize_matrix(random_mask2)
+visualize_matrix(random_mask3)
